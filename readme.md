@@ -27,11 +27,11 @@ lexi compile fibonacci.lxi --target rust
 
 ### Installation
 
-Download the binary for your platform from [Releases](https://github.com/yourusername/lexi/releases):
+Download the binary for your platform from [Releases](https://github.com/nvpkp/lexi/releases):
 
 ```bash
 # Linux/macOS
-curl -L https://github.com/yourusername/lexi/releases/latest/download/lexi-linux -o lexi
+curl -L https://github.com/nvpkp/lexi/releases/latest/download/lexi-linux -o lexi
 chmod +x lexi
 
 # Windows - download lexi-windows.exe from releases
