@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 use std::process;
+use std::collections::HashMap;
 
 #[derive(Parser)]
 #[command(name = "lexi")]
@@ -11,6 +12,40 @@ use std::process;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct ProfileConfig {
+    active_profile: String,
+    profiles: HashMap<String, Config>,
+}
+
+impl Default for ProfileConfig {
+    fn default() -> Self {
+        let mut profiles = HashMap::new();
+        profiles.insert("default".to_string(), Config::default());
+        
+        ProfileConfig {
+            active_profile: "default".to_string(),
+            profiles,
+        }
+    }
+}
+
+#[derive(Subcommand)]
+enum ProfileCommands {
+    /// List all profiles
+    List,
+    /// Create or switch to profile  
+    Use { name: String },
+    /// Create new profile
+    Create { name: String },
+    /// Delete profile
+    Delete { name: String },
+    /// Show current active profile
+    Current,
+    /// Set config for specific profile
+    Set { profile: String, key: String, value: String },
 }
 
 #[derive(Subcommand)]
@@ -38,6 +73,10 @@ enum Commands {
     Config {
         #[command(subcommand)]
         config_command: ConfigCommands,
+    },
+    Profile {
+        #[command(subcommand)]
+        profile_command: ProfileCommands,
     },
 }
 
@@ -164,6 +203,25 @@ impl LexiCompiler {
         Ok(())
     }
 
+    fn load_profile_config(&self) -> ProfileConfig {
+        if self.config_path.exists() {
+            let content = fs::read_to_string(&self.config_path)
+                .unwrap_or_else(|_| "{}".to_string());
+            serde_json::from_str(&content).unwrap_or_default()
+        } else {
+            ProfileConfig::default()
+        }
+    }
+
+    fn save_profile_config(&self, profile_config: &ProfileConfig) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(parent) = self.config_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = serde_json::to_string_pretty(profile_config)?;
+        fs::write(&self.config_path, content)?;
+        Ok(())
+    }
+
     async fn compile(&self, input: &str, target: &str, output: Option<&str>, run: bool) -> Result<(), Box<dyn std::error::Error>> {
         // Validate input file
         if !input.ends_with(".lxi") && !input.ends_with(".lexi") {
@@ -216,11 +274,14 @@ impl LexiCompiler {
         
         let extension = match target {
             "javascript" => ".js",
-            "python" => ".py",
+            "python" => ".py", 
             "java" => ".java",
             "cpp" => ".cpp",
             "rust" => ".rs",
             "go" => ".go",
+            "sql" => ".sql",
+            "mongodb" => ".js",
+            "redis" => ".txt",
             _ => ".js",
         };
 
@@ -249,8 +310,48 @@ impl LexiCompiler {
     }
 
     fn build_prompt(&self, lexi_content: &str, target: &str) -> (String, String) {
-        let system_prompt = format!(
-            "You are Lexi, a code generator that converts English descriptions into clean, functional {} code.
+        let system_prompt = match target {
+            "sql" => format!(
+                "You are Lexi, a database query generator that converts English descriptions into clean, efficient SQL.
+
+Rules:
+1. Generate only the SQL code, no explanations or markdown
+2. Use proper SQL syntax with appropriate JOINs, WHERE clauses, and indexing considerations
+3. Include comments for complex queries
+4. Use standard SQL that works across major databases (PostgreSQL, MySQL, SQL Server)
+5. Generate complete, working SQL statements
+6. Consider performance and use appropriate LIMIT clauses when needed
+
+Target: SQL"
+            ),
+            "mongodb" => format!(
+                "You are Lexi, a MongoDB query generator that converts English descriptions into MongoDB queries.
+
+Rules:
+1. Generate only MongoDB JavaScript code, no explanations or markdown
+2. Use proper MongoDB syntax with appropriate aggregation pipelines
+3. Include comments for complex operations
+4. Use modern MongoDB methods and operators
+5. Generate complete, working MongoDB queries
+6. Consider performance with appropriate indexing hints
+
+Target: MongoDB JavaScript"
+            ),
+            "redis" => format!(
+                "You are Lexi, a Redis command generator that converts English descriptions into Redis commands.
+
+Rules:
+1. Generate only Redis commands, no explanations or markdown
+2. Use proper Redis syntax and data structures
+3. Include comments for complex operations
+4. Use appropriate Redis commands for the use case
+5. Generate complete, working Redis command sequences
+6. Consider memory usage and TTL when appropriate
+
+Target: Redis"
+            ),
+            _ => format!(
+                "You are Lexi, a code generator that converts English descriptions into clean, functional {} code.
 
 Rules:
 1. Generate only the code, no explanations or markdown
@@ -261,17 +362,44 @@ Rules:
 6. Generate complete, working implementations
 
 Target language: {}",
-            target, target, target
-        );
+                target, target, target
+            )
+        };
 
-        let user_prompt = format!(
-            "Convert this Lexi description into {} code:
+        let user_prompt = match target {
+            "sql" => format!(
+                "Convert this description into SQL:
+
+{}
+
+Generate clean, efficient SQL with proper syntax.",
+                lexi_content
+            ),
+            "mongodb" => format!(
+                "Convert this description into MongoDB JavaScript:
+
+{}
+
+Generate clean MongoDB queries with proper syntax.",
+                lexi_content
+            ),
+            "redis" => format!(
+                "Convert this description into Redis commands:
+
+{}
+
+Generate clean Redis commands with proper syntax.",
+                lexi_content
+            ),
+            _ => format!(
+                "Convert this Lexi description into {} code:
 
 {}
 
 Generate clean, production-ready code with proper function names and structure.",
-            target, lexi_content
-        );
+                target, lexi_content
+            )
+        };
 
         (system_prompt, user_prompt)
     }
@@ -599,8 +727,13 @@ A Lexi project - code generated from English descriptions using AI.
     }
 
     fn list_config(&self) {
-        let config = self.load_config();
-        println!("🔧 Lexi Configuration:");
+        let profile_config = self.load_profile_config();
+        let default_config = Config::default();
+        let config = profile_config.profiles
+            .get(&profile_config.active_profile)
+            .unwrap_or(&default_config);
+            
+        println!("🔧 Lexi Configuration (Profile: {}):", profile_config.active_profile);
         println!("   provider: {}", config.provider);
         println!("   model: {}", config.model);
         println!(
@@ -614,6 +747,114 @@ A Lexi project - code generated from English descriptions using AI.
         println!("   base_url: {}", if config.base_url.is_empty() { "(not set)" } else { &config.base_url });
         println!("   temperature: {}", config.temperature);
         println!("   max_tokens: {}", config.max_tokens);
+    }
+
+    fn list_profiles(&self) {
+        let profile_config = self.load_profile_config();
+        println!("👥 Available Profiles:");
+        
+        for (name, config) in &profile_config.profiles {
+            let active_marker = if name == &profile_config.active_profile { " (active)" } else { "" };
+            println!("   • {}{} - {} ({})", name, active_marker, config.provider, config.model);
+        }
+    }
+
+    fn switch_profile(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut profile_config = self.load_profile_config();
+        
+        if !profile_config.profiles.contains_key(name) {
+            eprintln!("❌ Profile '{}' does not exist. Create it first with: lexi profile create {}", name, name);
+            process::exit(1);
+        }
+        
+        profile_config.active_profile = name.to_string();
+        self.save_profile_config(&profile_config)?;
+        
+        println!("✅ Switched to profile '{}'", name);
+        Ok(())
+    }
+
+    fn create_profile(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut profile_config = self.load_profile_config();
+        
+        if profile_config.profiles.contains_key(name) {
+            println!("⚠️  Profile '{}' already exists", name);
+            return Ok(());
+        }
+        
+        profile_config.profiles.insert(name.to_string(), Config::default());
+        profile_config.active_profile = name.to_string();
+        self.save_profile_config(&profile_config)?;
+        
+        println!("✅ Created and switched to profile '{}'", name);
+        println!("💡 Configure it with: lexi config set <key> <value>");
+        Ok(())
+    }
+
+    fn delete_profile(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut profile_config = self.load_profile_config();
+        
+        if name == "default" {
+            eprintln!("❌ Cannot delete the default profile");
+            process::exit(1);
+        }
+        
+        if !profile_config.profiles.contains_key(name) {
+            eprintln!("❌ Profile '{}' does not exist", name);
+            process::exit(1);
+        }
+        
+        profile_config.profiles.remove(name);
+        
+        // Switch to default if we deleted the active profile
+        if profile_config.active_profile == name {
+            profile_config.active_profile = "default".to_string();
+            println!("🔄 Switched back to 'default' profile");
+        }
+        
+        self.save_profile_config(&profile_config)?;
+        println!("✅ Deleted profile '{}'", name);
+        Ok(())
+    }
+
+    fn show_current_profile(&self) {
+        let profile_config = self.load_profile_config();
+        println!("📍 Current profile: {}", profile_config.active_profile);
+    }
+
+    fn set_profile_config(&self, profile_name: &str, key: &str, value: &str) -> Result<(), Box<dyn std::error::Error>> {
+        let mut profile_config = self.load_profile_config();
+        
+        if !profile_config.profiles.contains_key(profile_name) {
+            eprintln!("❌ Profile '{}' does not exist. Create it first with: lexi profile create {}", profile_name, profile_name);
+            process::exit(1);
+        }
+        
+        let mut config = profile_config.profiles[profile_name].clone();
+        
+        match key {
+            "provider" => config.provider = value.to_string(),
+            "model" => config.model = value.to_string(),
+            "api_key" => config.api_key = value.to_string(),
+            "base_url" => config.base_url = value.to_string(),
+            "temperature" => config.temperature = value.parse().unwrap_or(0.1),
+            "max_tokens" => config.max_tokens = value.parse().unwrap_or(2000),
+            _ => {
+                eprintln!("❌ Unknown config key: {}", key);
+                process::exit(1);
+            }
+        }
+        
+        profile_config.profiles.insert(profile_name.to_string(), config);
+        self.save_profile_config(&profile_config)?;
+        
+        println!("✅ Set {} = {} for profile '{}'", key, value, profile_name);
+        
+        if key == "api_key" {
+            println!("🔐 API key saved securely");
+        }
+        
+        Ok(())
     }
 
     fn show_config_init(&self) {
@@ -677,6 +918,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             ConfigCommands::Init => {
                 compiler.show_config_init();
+            }
+        },
+        Commands::Profile { profile_command } => match profile_command {
+            ProfileCommands::List => {
+                compiler.list_profiles();
+            }
+            ProfileCommands::Use { name } => {
+                compiler.switch_profile(&name)?;
+            }
+            ProfileCommands::Create { name } => {
+                compiler.create_profile(&name)?;
+            }
+            ProfileCommands::Delete { name } => {
+                compiler.delete_profile(&name)?;
+            }
+            ProfileCommands::Current => {
+                compiler.show_current_profile();
+            }
+            ProfileCommands::Set { profile, key, value } => {
+                compiler.set_profile_config(&profile, &key, &value)?;
             }
         },
     }

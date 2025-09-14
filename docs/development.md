@@ -6,7 +6,7 @@ Guide for contributing to the Lexi compiler.
 
 ```bash
 # Clone and build
-git clone https://github.com/nvpkp/lexi.git
+git clone https://github.com/yourusername/lexi.git
 cd lexi
 cargo build
 

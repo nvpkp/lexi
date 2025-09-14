@@ -27,43 +27,50 @@ lexi compile fibonacci.lxi --target rust
 
 ### Installation
 
-Download the binary for your platform from [Releases](https://github.com/nvpkp/lexi/releases):
+Download the binary for your platform:
 
+**Linux (available now):**
 ```bash
-# Linux/macOS
-curl -L https://github.com/nvpkp/lexi/releases/latest/download/lexi-linux -o lexi
+curl -L https://github.com/nvpkp/lexi/raw/main/release/v1.0.0/lexi-linux -o lexi
 chmod +x lexi
-
-# Windows - download lexi-windows.exe from releases
 ```
+
+**Windows/macOS:** Coming soon via [GitHub Releases](https://github.com/nvpkp/lexi/releases)
 
 ### Configuration
 
 ```bash
-# Set up OpenAI (recommended)
-lexi config set provider openai
-lexi config set model gpt-4
-lexi config set api_key sk-your-openai-key
+# Create profiles for different accounts
+./lexi profile create work
+./lexi profile create personal
 
-# Or use Claude
-lexi config set provider anthropic
-lexi config set api_key sk-ant-your-claude-key
+# Set up work profile (Anthropic)
+./lexi profile use work
+./lexi config set provider anthropic
+./lexi config set model claude-3-5-sonnet-20241022
+./lexi config set api_key sk-ant-your-work-key
 
-# Or use local Ollama
-lexi config set provider local
-lexi config set model codellama
+# Set up personal profile (OpenAI)
+./lexi profile use personal
+./lexi config set provider openai
+./lexi config set model gpt-4
+./lexi config set api_key sk-your-personal-key
+
+# Switch between profiles
+./lexi profile use work      # Use work account
+./lexi profile use personal  # Use personal account
 ```
 
 ### Your First Program
 
 ```bash
 # Create project
-lexi init my-app
+./lexi init my-app
 cd my-app
 
 # Edit src/main.lxi with your English descriptions
 # Then compile and run
-lexi compile src/main.lxi --target javascript --run
+./lexi compile src/main.lxi --target javascript --run
 ```
 
 ## 📖 Documentation

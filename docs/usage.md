@@ -27,8 +27,18 @@ Creates project with sample files and structure.
 
 ### Configuration
 ```bash
-lexi config set <key> <value>    # Set config
-lexi config list                 # Show current config
+lexi config set <key> <value>    # Set config for current profile
+lexi config list                 # Show current profile config
+```
+
+### Profile Management
+```bash
+lexi profile list                    # List all profiles
+lexi profile use <name>              # Switch to profile
+lexi profile create <name>           # Create new profile
+lexi profile current                 # Show active profile
+lexi profile set <profile> <key> <value>  # Set config for specific profile
+lexi profile delete <name>           # Delete profile
 ```
 
 ## Writing Lexi Programs
